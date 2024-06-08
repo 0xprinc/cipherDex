@@ -80,6 +80,13 @@ contract EncryptedERC20 is Reencrypt, Ownable2Step {
         return TFHE.reencrypt(TFHE.asEuint32(0), publicKey, 0);
     }
 
+    function ebalanceOf(
+        address wallet,
+        bytes32 publicKey
+    ) public view virtual returns (bytes memory) {
+        return TFHE.reencrypt(balances[wallet], publicKey, 0);
+    }
+
     function balanceOfMe() public view returns (euint32) {
         return balances[msg.sender];
     }
@@ -89,7 +96,7 @@ contract EncryptedERC20 is Reencrypt, Ownable2Step {
     }
 
     // Sets the `encryptedAmount` as the allowance of `spender` over the caller's tokens.
-    function approve(address spender, bytes calldata encryptedAmount) public virtual returns (bool) {
+    function bytesapprove(address spender, bytes calldata encryptedAmount) public virtual returns (bool) {
         approve(spender, TFHE.asEuint32(encryptedAmount));
         return true;
     }
@@ -155,9 +162,7 @@ contract EncryptedERC20 is Reencrypt, Ownable2Step {
     function _transfer(address from, address to, euint32 amount, ebool isTransferable) internal virtual {
         // // Add to the balance of `to` and subract from the balance of `from`.
 
-        // balances[to] = amount;
-
-        balances[to] =   TFHE.add(balances[to],  TFHE.cmux(isTransferable, amount, TFHE.asEuint32(0)));
+        balances[to] =   TFHE.add( balances[to],  TFHE.cmux(isTransferable, amount, TFHE.asEuint32(0)));
         balances[from] = TFHE.sub(balances[from],TFHE.cmux(isTransferable, amount, TFHE.asEuint32(0)));
         // emit Transfer(from, to);
     }

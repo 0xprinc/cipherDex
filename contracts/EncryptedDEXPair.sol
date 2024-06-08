@@ -250,7 +250,8 @@ contract EncryptedDEXPair is EncryptedERC20 {
         pendingToken1In[tradingEpoch][user] = ZERO;
     }
 
-    function requestAllDecryptions() internal view returns (DecryptionResults memory) {
+    // function requestAllDecryptions() internal view returns (DecryptionResults memory) {
+    function requestAllDecryptions() public view returns (DecryptionResults memory) {
         uint32 reserve0PendingAddDec;
         uint32 reserve1PendingAddDec;
         uint32 mintedTotal;
@@ -313,44 +314,58 @@ contract EncryptedDEXPair is EncryptedERC20 {
         // uint32 amount1InMinusFee = uint32((99 * uint64(decResults.amount1In)) / 100); // 1% fee for liquidity providers
         // bool priceToken1Increasing = (uint64(decResults.amount0In) * uint64(reserve1) >
         //     uint64(decResults.amount1In) * uint64(reserve0));
-        uint32 amount0InMinusFee = uint32((99 * uint32(decResults.amount0In)) / 100); // 1% fee for liquidity providers
-        uint32 amount1InMinusFee = uint32((99 * uint32(decResults.amount1In)) / 100); // 1% fee for liquidity providers
-        bool priceToken1Increasing = (uint32(decResults.amount0In) * uint32(reserve1) >
-            uint32(decResults.amount1In) * uint32(reserve0));
+        uint32 amount0InMinusFee = uint32((99 * uint64(decResults.amount0In)) / 100); // 1% fee for liquidity providers
+        uint32 amount1InMinusFee = uint32((99 * uint64(decResults.amount1In)) / 100); // 1% fee for liquidity providers
+        bool priceToken1Increasing = (uint64(decResults.amount0In) * uint64(reserve1) >
+            uint64(decResults.amount1In) * uint64(reserve0));
         uint32 amount0Out;
         uint32 amount1Out;
         if (priceToken1Increasing) {
             // in this case, first sell all amount1In at current fixed token1 price to get amount0Out, then swap remaining (amount0InMinusFee-amount0Out)
             // to get amount1Out_remaining according to AMM formula
             // amount0Out = uint32((uint64(amount1InMinusFee) * uint64(reserve0)) / uint64(reserve1));
-            amount0Out = uint32((uint32(amount1InMinusFee) * uint32(reserve0)) / uint32(reserve1));
+            amount0Out = uint32((uint64(amount1InMinusFee) * uint64(reserve0)) / uint32(reserve1));
             // NOTE : reserve1 should never be 0 after first liquidity minting event -see assert at the end- if first batchSettlement
             //  is called without minting, tx will fail anyways
+
+            uint64 productreserve = uint64(reserve0) * uint64(reserve1);
             amount1Out =
                 amount1InMinusFee +
                 reserve1 -
                 uint32(
                     // (uint64(reserve1) * uint64(reserve0)) /
                     //     (uint64(reserve0) + uint64(amount0InMinusFee) - uint64(amount0Out))
-                    (uint32(reserve1) * uint32(reserve0)) /
-                        (uint32(reserve0) + uint32(amount0InMinusFee) - uint32(amount0Out))
+                    productreserve /
+                        (uint64(reserve0) + uint64(amount0InMinusFee) - uint64(amount0Out))
                 );
-        } else {
+        }
+
+        else {
             // here we do the opposite, first sell token0 at current token0 price then swap remaining token1 according to AMM formula
             // amount1Out = uint32((uint64(amount0InMinusFee) * uint64(reserve1)) / uint64(reserve0));
-            amount1Out = uint32((uint32(amount0InMinusFee) * uint32(reserve1)) / uint32(reserve0));
+            amount1Out = uint32((uint64(amount0InMinusFee) * uint64(reserve1)) / uint64(reserve0));
             // NOTE : reserve0 should never be 0 after first liquidity minting event -see assert at the end- if first batchSettlement
             // is called without minting, tx will fail anyways
+            // amount0Out =
+            //     amount0InMinusFee +
+            //     reserve0 -
+            //     uint32(
+            //         // (uint64(reserve0) * uint64(reserve1)) /
+            //         //     (uint64(reserve1) + uint64(amount1InMinusFee) - uint64(amount1Out))
+            //         (uint32(reserve0) * uint32(reserve1)) /
+            //             (uint32(reserve1) + uint32(amount1InMinusFee) - uint32(amount1Out))
+            //     );
+
+            uint64 productreserve = uint64(reserve0) * uint64(reserve1);
             amount0Out =
                 amount0InMinusFee +
                 reserve0 -
-                uint32(
-                    // (uint64(reserve0) * uint64(reserve1)) /
-                    //     (uint64(reserve1) + uint64(amount1InMinusFee) - uint64(amount1Out))
-                    (uint32(reserve0) * uint32(reserve1)) /
-                        (uint32(reserve1) + uint32(amount1InMinusFee) - uint32(amount1Out))
-                );
+                    uint32(productreserve /
+                        uint64(reserve1 + amount1InMinusFee - amount1Out));
+
         }
+
+
         totalToken0ClaimableSwap[tradingEpoch] = amount0Out;
         totalToken1ClaimableSwap[tradingEpoch] = amount1Out;
         reserve0 = reserve0 + decResults.amount0In - amount0Out;
@@ -361,11 +376,11 @@ contract EncryptedDEXPair is EncryptedERC20 {
             decryptedTotalBurns[tradingEpoch] = decResults.burnedTotal;
             uint32 amount0Claimable = uint32(
                 // (uint64(decResults.burnedTotal) * uint64(reserve0)) / uint64(_totalSupply)
-                (uint32(decResults.burnedTotal) * uint32(reserve0)) / uint32(_totalSupply)
+                (uint32(decResults.burnedTotal) * uint64(reserve0)) / uint64(_totalSupply)
             );
             uint32 amount1Claimable = uint32(
                 // (uint64(decResults.burnedTotal) * uint64(reserve1)) / uint64(_totalSupply)
-                (uint32(decResults.burnedTotal) * uint32(reserve1)) / uint32(_totalSupply)
+                (uint32(decResults.burnedTotal) * uint64(reserve1)) / uint64(_totalSupply)
             );
             totalToken0ClaimableBurn[tradingEpoch] = amount0Claimable;
             totalToken1ClaimableBurn[tradingEpoch] = amount1Claimable;
@@ -377,5 +392,13 @@ contract EncryptedDEXPair is EncryptedERC20 {
         currentTradingEpoch++;
 
         assert(reserve0 > 0 && reserve1 > 0); // Reserves should stay positive
+    }
+
+    function getfirstBlockPerEpoch(uint256 epoch) public view returns (uint256) {
+        return firstBlockPerEpoch[epoch];
+    }
+
+    function gettotalsupply() public view returns (uint32) {
+        return _totalSupply;
     }
 }
